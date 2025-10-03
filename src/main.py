@@ -21,7 +21,7 @@ if __name__ == "__main__":
     writer = ReportWriter("Report Writer")
 
     # Coordinator with routing to all researchers
-    coordinator = Coordinator("Coordinator", [fred, yahoo, news], analyst, writer)
+    coordinator = Coordinator("Coordinator", [fred, yahoo, news, sec], analyst, writer)
 
     # Example run for stock symbol
     stock_symbol = "AAPL"
