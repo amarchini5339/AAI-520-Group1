@@ -12,7 +12,7 @@ from Coordinator import Coordinator
 # -------------------------------
 if __name__ == "__main__":
     # Create specialist agents
-    fred = FREDResearcher("FRED Researcher")
+    fred = FREDResearcher()
     yahoo = YahooFinanceResearcher("Yahoo Finance Researcher")
     news = NewsResearcher("News Researcher")
     sec = SECresearcher("SEC Researcher")

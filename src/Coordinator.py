@@ -15,7 +15,9 @@ class Coordinator(Agent):
 
         research_results = []
         for researcher in self.researchers:
+            print(f"\nQuerying {researcher.name}...")
             result = researcher.process(symbol)
+            print(f"Got result from {researcher.name}: {result}")
             research_results.append(result)
 
         analysis = self.analyst.process(research_results)
