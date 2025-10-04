@@ -53,8 +53,6 @@ class FREDResearcher(Agent):
         economic_data = {}
         
         try:
-            print("INDICATORS")
-            print(self.indicators)
             for series_id, description in self.indicators.items():
                 self.remember(f"Fetching {description} (Series: {series_id})")
                 
