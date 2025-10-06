@@ -82,13 +82,14 @@ class FREDResearcher(Agent):
                     if pct_change:
                         self.remember(f"{description} change: {pct_change:.2f}%")
             
-            summary = self._generate_summary(economic_data, symbol)
+            analysis_result = self._generate_summary(economic_data, symbol)
             return {
                 "source": "FRED",
                 "timestamp": datetime.now().isoformat(),
                 "data": {
                     "indicators": economic_data,
-                    "analysis": summary
+                    "rating": analysis_result["rating"],
+                    "analysis": analysis_result["analysis"]
                 }
             }
             
@@ -104,14 +105,14 @@ class FREDResearcher(Agent):
     
     def _generate_summary(self, economic_data, symbol=None):
         """
-        Generate a summary of the economic indicators using LLM analysis.
+        Generate a summary and rating of the economic indicators using LLM analysis.
         
         Args:
             economic_data (dict): The collected economic data
             symbol (str, optional): The stock symbol being analyzed
             
         Returns:
-            str: A detailed analysis of the economic situation
+            dict: A dictionary containing the rating (1-5) and analysis
         """
         # Prepare the economic data for the prompt
         data_points = []
@@ -128,14 +129,17 @@ class FREDResearcher(Agent):
         Economic Indicators:
         {economic_context}
 
-        Please provide a concise analysis that covers:
-        1. How these macroeconomic conditions might specifically affect {symbol}'s business and stock performance
-        2. Key risks or opportunities for {symbol} based on these economic indicators
-        3. How current monetary policy (Fed Funds Rate) might impact {symbol}'s valuation
-        4. Whether the overall economic environment (GDP, CPI, Employment) is favorable for {symbol}
+        Provide two things:
+        1. A rating from 1-5 (where 1 is very unfavorable and 5 is very favorable) based on how the current economic environment affects {symbol}'s prospects. Consider:
+           - Impact of macroeconomic conditions on {symbol}'s business
+           - Current monetary policy effects on {symbol}'s valuation
+           - Overall economic environment (GDP, CPI, Employment)
+        
+        2. A brief analysis explaining the rating and key economic factors affecting {symbol}.
 
-        Focus on making clear connections between the economic data and potential impacts on {symbol}.
-        Keep the analysis brief but insightful."""
+        Format your response as:
+        RATING: [number 1-5]
+        ANALYSIS: [your brief explanation]"""
 
         try:
             self.remember("Generating LLM-based economic analysis")
@@ -150,12 +154,25 @@ class FREDResearcher(Agent):
                 temperature=0.7
             )
             
-            analysis = response.choices[0].message.content
-            self.remember(f"Generated economic analysis: {analysis}")
-            print(analysis)
-            return analysis
+            response_text = response.choices[0].message.content
+            self.remember(f"Generated economic analysis: {response_text}")
+            
+            # Parse the response to extract rating and analysis
+            rating_line = [line for line in response_text.split('\n') if line.startswith('RATING:')][0]
+            analysis_line = [line for line in response_text.split('\n') if line.startswith('ANALYSIS:')][0]
+            
+            rating = int(rating_line.split(':')[1].strip())
+            analysis = analysis_line.split(':')[1].strip()
+            
+            return {
+                "rating": rating,
+                "analysis": analysis
+            }
             
         except Exception as e:
             error_msg = f"Error generating LLM analysis: {str(e)}"
             self.remember(error_msg)
-            return error_msg
+            return {
+                "rating": 3,  # Default neutral rating
+                "analysis": error_msg
+            }
