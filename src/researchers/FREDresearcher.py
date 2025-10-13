@@ -1,178 +1,75 @@
-import os
-from datetime import datetime, timedelta
-import pandas as pd
-from fredapi import Fred
-from agent import Agent
-import openai
+from __future__ import annotations
 
-class FREDResearcher(Agent):
-    def __init__(self, api_key=None, openai_api_key=None):
-        """
-        Initialize the FRED Researcher with API keys.
-        
-        Args:
-            api_key (str, optional): FRED API key. If not provided, will try to get from environment.
-            openai_api_key (str, optional): OpenAI API key. If not provided, will try to get from environment.
-        """
-        super().__init__("FRED Researcher")
-        self.api_key = api_key or os.getenv('FRED_API_KEY')
-        self.openai_api_key = openai_api_key or os.getenv('OPENAI_API_KEY')
-        
-        if not self.api_key:
-            raise ValueError("FRED API key must be provided or set in FRED_API_KEY environment variable")
-        if not self.openai_api_key:
-            raise ValueError("OpenAI API key must be provided or set in OPENAI_API_KEY environment variable")
-            
-        openai.api_key = self.openai_api_key
-        self.fred = Fred(api_key=self.api_key)
-        
-        # Define core economic indicators
-        self.indicators = {
-            'CPIAUCSL': 'Consumer Price Index',
-            'UNRATE': 'Unemployment Rate',
-            'FEDFUNDS': 'Federal Funds Rate',
-            'GDP': 'Gross Domestic Product',
-            'INDPRO': 'Industrial Production Index'
-        }
+import inspect
+import json
+import logging
+from typing import Any, Callable, Dict, Optional, TypedDict
 
-    def process(self, symbol):
-        """
-        Fetch and analyze economic indicators from FRED that might impact the given symbol.
-        
-        Args:
-            symbol (str): The stock symbol to analyze
-            
-        Returns:
-            dict: A dictionary containing the economic indicators and their latest values
-        """
-        self.remember(f"Fetching core economic indicators for analysis of {symbol}")
-        
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=365)  # Get 1 year of data
-        
-        economic_data = {}
-        
-        try:
-            for series_id, description in self.indicators.items():
-                self.remember(f"Fetching {description} (Series: {series_id})")
-                
-                # Get the data series from FRED
-                series = self.fred.get_series(
-                    series_id,
-                    observation_start=start_date.strftime('%Y-%m-%d'),
-                    observation_end=end_date.strftime('%Y-%m-%d')
-                )
-                
-                if not series.empty:
-                    latest_value = series.iloc[-1]
-                    previous_value = series.iloc[-2] if len(series) > 1 else None
-                    
-                    # Calculate percentage change
-                    pct_change = ((latest_value - previous_value) / previous_value * 100) if previous_value else None
-                    
-                    economic_data[series_id] = {
-                        'description': description,
-                        'latest_value': latest_value,
-                        'previous_value': previous_value,
-                        'pct_change': pct_change,
-                        'last_updated': series.index[-1].strftime('%Y-%m-%d')
-                    }
-                    
-                    self.remember(f"Latest {description}: {latest_value:.2f}")
-                    if pct_change:
-                        self.remember(f"{description} change: {pct_change:.2f}%")
-            
-            analysis_result = self._generate_summary(economic_data, symbol)
-            return {
-                "source": "FRED",
-                "timestamp": datetime.now().isoformat(),
-                "data": {
-                    "indicators": economic_data,
-                    "rating": analysis_result["rating"],
-                    "analysis": analysis_result["analysis"]
-                }
-            }
-            
-        except Exception as e:
-            error_msg = f"Error fetching FRED data: {str(e)}"
-            self.remember(error_msg)
-            return {
-                "source": "FRED",
-                "data": "Economic data unavailable",
-                "error": error_msg,
-                "timestamp": datetime.now().isoformat()
-            }
+# LangGraph
+try:
+    from langgraph.graph import StateGraph, END
+    from langgraph.checkpoint.memory import MemorySaver
+except Exception as e:  # pragma: no cover
+    raise ImportError(
+        "langgraph is required. Install with: pip install langgraph"
+    ) from e
+
+# CrewAI tool base
+try:
+    from pydantic import BaseModel, Field
+    from crewai.tools import BaseTool
+except Exception as e:  # pragma: no cover
+    raise ImportError(
+        "CrewAI and Pydantic are required. Install with: pip install crewai pydantic"
+    ) from e
+
+# Import the FRED analysis logic
+try:
+    from researchers import fred_tools as fred_agent
+except Exception as e:  # pragma: no cover
+    raise ImportError(
+        "Unable to import fred_tools.py. Ensure it is on PYTHONPATH and importable."
+    ) from e
+
+log = logging.getLogger(__name__)
+
+class FREDState(TypedDict, total=False):
+    query: str
+    context: Dict[str, Any]
+    result: Any
+
+class FREDAgentAdapter:
+    def __init__(self, module=fred_agent):
+        self._module = module
+        self._entrypoint = getattr(module, "main")
+
+    def run(self, query: str, context=None):
+        # Treat query as ticker
+        return self._entrypoint(query)
+
+def create_crewai_fred_agent(agent_class):
+    """
+    Create a CrewAI agent for FRED economic analysis.
+    """
+    agent = FREDAgentAdapter()
     
-    def _generate_summary(self, economic_data, symbol=None):
-        """
-        Generate a summary and rating of the economic indicators using LLM analysis.
-        
-        Args:
-            economic_data (dict): The collected economic data
-            symbol (str, optional): The stock symbol being analyzed
-            
-        Returns:
-            dict: A dictionary containing the rating (1-5) and analysis
-        """
-        # Prepare the economic data for the prompt
-        data_points = []
-        for series_id, data in economic_data.items():
-            data_points.append(
-                f"{data['description']}: Current value: {data['latest_value']:.2f}, "
-                f"Change: {data['pct_change']:.2f}% (as of {data['last_updated']})"
-            )
-        
-        economic_context = "\n".join(data_points)
-            
-        prompt = f"""As an economic analyst, analyze how these core economic indicators might impact {symbol} stock:
+    class FREDAnalysisTool(BaseTool):
+        name: str = "fred_analysis"
+        description: str = "Analyzes economic indicators from FRED to assess their impact on a given stock ticker"
 
-        Economic Indicators:
-        {economic_context}
+        def _run(self, query: str) -> Dict[str, Any]:
+            return agent.run(query)
 
-        Provide two things:
-        1. A rating from 1-5 (where 1 is very unfavorable and 5 is very favorable) based on how the current economic environment affects {symbol}'s prospects. Consider:
-           - Impact of macroeconomic conditions on {symbol}'s business
-           - Current monetary policy effects on {symbol}'s valuation
-           - Overall economic environment (GDP, CPI, Employment)
-        
-        2. A brief analysis explaining the rating and key economic factors affecting {symbol}.
+        async def _arun(self, query: str) -> Dict[str, Any]:
+            return self._run(query)
 
-        Format your response as:
-        RATING: [number 1-5]
-        ANALYSIS: [your brief explanation]"""
-
-        try:
-            self.remember("Generating LLM-based economic analysis")
-            client = openai.OpenAI()
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are an expert economic analyst providing insights based on FRED economic data."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=300,
-                temperature=0.7
-            )
-            
-            response_text = response.choices[0].message.content
-            self.remember(f"Generated economic analysis: {response_text}")
-            
-            # Parse the response to extract rating and analysis
-            rating_line = [line for line in response_text.split('\n') if line.startswith('RATING:')][0]
-            analysis_line = [line for line in response_text.split('\n') if line.startswith('ANALYSIS:')][0]
-            
-            rating = int(rating_line.split(':')[1].strip())
-            analysis = analysis_line.split(':')[1].strip()
-            
-            return {
-                "rating": rating,
-                "analysis": analysis
-            }
-            
-        except Exception as e:
-            error_msg = f"Error generating LLM analysis: {str(e)}"
-            self.remember(error_msg)
-            return {
-                "rating": 3,  # Default neutral rating
-                "analysis": error_msg
-            }
+    return agent_class(
+        name="FRED Economic Analyst",
+        role="Economic Research Specialist",
+        goal="Analyze macroeconomic indicators from FRED to assess their impact on specific stocks",
+        backstory="""You are an expert economic analyst with deep knowledge of how 
+        macroeconomic indicators affect stock performance. You use FRED data to provide 
+        insights about the economic environment's impact on specific companies.""",
+        allow_delegation=False,
+        tools=[FREDAnalysisTool()]
+    )
