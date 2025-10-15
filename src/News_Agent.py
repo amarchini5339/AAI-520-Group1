@@ -14,11 +14,11 @@ class NewsAgent:
         self.model = genai.GenerativeModel("gemini-2.5-flash")
         self.memory = {}  # store previous company analyses
 
-    # --- Planning: decide workflow steps ---
+    # Planning: decide workflow steps 
     def plan_steps(self, company):
         return ["fetch_news", "analyze_sentiment", "self_reflect", "iterate_if_needed"]
 
-   # --- Tool: fetch news ---
+   # Tool: fetch news 
     def fetch_news(self, company, max_articles=10):
         """Fetch recent news for the specified company, filtering only relevant articles."""
         if not self.news_api_key:
@@ -59,7 +59,7 @@ class NewsAgent:
             return [f"Error fetching news: {str(e)}"]
 
 
-    # --- Analyze sentiment and summarize ---
+    #  Analyze sentiment and summarize 
     def analyze_sentiment(self, news_articles):
         text = "\n".join(news_articles[:10])
         prompt = f"""
@@ -74,7 +74,7 @@ Articles:
         response = self.model.generate_content(prompt)
         return response.text
 
-    # --- Self-reflection: evaluate analysis quality ---
+    # Self-reflection: evaluate analysis quality 
     def self_reflect(self, company, analysis):
         prompt = f"""
 You are a financial research agent.
@@ -90,7 +90,7 @@ Analysis:
         feedback = response.text
         return feedback
 
-    # --- Iteration: refine based on feedback ---
+    # Iteration: refine based on feedback 
     def iterate(self, company, feedback):
         if "improve" in feedback.lower():
             news = self.fetch_news(company, max_articles=15)  # fetch more
@@ -98,7 +98,7 @@ Analysis:
             return new_analysis
         return None
 
-    # --- Run the full agent workflow ---
+    # Run the full agent workflow 
     def run(self, company):
         print(f" Planning steps for: {company}")
         steps = self.plan_steps(company)
@@ -126,7 +126,7 @@ Analysis:
                     print(refined)
                     analysis = refined
 
-           # --- Prepare JSON-like output ---
+           # Prepare JSON-like output 
         result = {
             "agent": "NewsAgent",
             "company": company,
