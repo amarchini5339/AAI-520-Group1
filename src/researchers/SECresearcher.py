@@ -25,6 +25,9 @@ class sec_filing_flow(Flow):
         print(f"Starting CIK lookup for {ticker}")
 
         # Call your local helper function
+
+
+        
         cik = ticker_to_cik(ticker)
 
         # Save result in flow state

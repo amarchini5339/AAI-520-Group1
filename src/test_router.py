@@ -6,6 +6,8 @@ from researchers.tools import yahoo_find_ticker as yft
 
 from researchers.SECresearcher import sec_filing_flow_crew
 
+from News_Agent_Crew import news_agent_crew
+
 load_dotenv()
 
 class ExampleFlow(Flow):
@@ -74,6 +76,14 @@ class ExampleFlow(Flow):
         return 'NEWS_DONE'
     
     @listen('get_news_agent')
+    def get_news_agent(self):
+        symbol = self.state["best"]["symbol"]
+        print(f"News branch for {symbol} - proceeding to do news research")
+        result = news_agent_crew.kickoff(inputs={"company": symbol})
+        self.state["news_result"] = result
+        print(f"NewsAgent Crew completed for {symbol}")
+        return 'NEWS_DONE'
+    
     def finalize(self):
         symbol = self.state["best"]["symbol"]
         print(f"News done branch for {symbol} - finalizing flow")
