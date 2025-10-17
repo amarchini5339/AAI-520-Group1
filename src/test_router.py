@@ -4,7 +4,7 @@ from litellm import completion
 
 from researchers.tools import yahoo_find_ticker as yft
 
-from researchers.SECresearcher import sec_filing_flow_crew
+from researchers.SECresearcher import run_sec_filing_agent
 
 from News_Agent_Crew import news_agent_crew
 
@@ -49,8 +49,9 @@ class ExampleFlow(Flow):
         print(f"Equity branch for {symbol} - running SEC research agent...")
 
         try:
-            result = sec_filing_flow_crew.kickoff(inputs={"ticker": symbol})
+            result = run_sec_filing_agent({"ticker": symbol})
             self.state["sec_result"] = result
+            print(self.state["sec_result"])
             print(f"SEC Research completed for {symbol}")
         except Exception as e:
             print(f"Error running SEC agent: {e}")
@@ -69,23 +70,25 @@ class ExampleFlow(Flow):
         print(f"Yahoo done branch for {symbol} - proceeding to do fred research")
         return 'FRED_DONE'
     
-    @listen('get_fred_agent')
-    def get_news_agent(self):
-        symbol = self.state["best"]["symbol"]
-        print(f"Fred done branch for {symbol} - proceeding to do news research")
-        return 'NEWS_DONE'
+    # @listen('get_fred_agent')
+    # def get_news_agent(self):
+    #     symbol = self.state["best"]["symbol"]
+    #     print(f"Fred done branch for {symbol} - proceeding to do news research")
+    #     return 'NEWS_DONE'
     
-    @listen('get_news_agent')
+    @listen('get_fred_agent')
     def get_news_agent(self):
         symbol = self.state["best"]["symbol"]
         print(f"News branch for {symbol} - proceeding to do news research")
         result = news_agent_crew.kickoff(inputs={"company": symbol})
         self.state["news_result"] = result
+        print(self.state["news_result"])
         print(f"NewsAgent Crew completed for {symbol}")
         return 'NEWS_DONE'
     
     def finalize(self):
         symbol = self.state["best"]["symbol"]
+        print(self.state)
         print(f"News done branch for {symbol} - finalizing flow")
         return self.state
 
@@ -94,6 +97,6 @@ flow = ExampleFlow()
 
 flow.plot()  # visualize flow
 
-result = flow.kickoff(inputs={"prompt": "OpenAI",})
+result = flow.kickoff(inputs={"prompt": "Apple",})
 
 print(f"\nResult: {result}")
