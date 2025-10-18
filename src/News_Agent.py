@@ -73,6 +73,27 @@ Articles:
 """
         response = self.model.generate_content(prompt)
         return response.text
+    
+    # Reanalyze only new or uncovered information
+    def reanalyze_sentiment(self, new_articles, previous_summary):
+        text = "\n".join(new_articles[:10])
+        prompt = f"""
+    You are a financial news sentiment analyzer refining a previous analysis.
+
+    Your goal:
+- Identify ONLY truly new insights, opportunities, risks, or sentiment shifts not mentioned before.
+- show the article that provides the new insight
+- Avoid repeating or restating anything already covered.
+- Keep it short, plain, and non-academic (no jargon).
+
+    Previous summary:
+    {previous_summary}
+
+    New articles:
+    {text}
+    """
+        response = self.model.generate_content(prompt)
+        return response.text
 
     # Self-reflection: evaluate analysis quality 
     def self_reflect(self, company, analysis):
@@ -91,10 +112,10 @@ Analysis:
         return feedback
 
     # Iteration: refine based on feedback 
-    def iterate(self, company, feedback):
+    def iterate(self, company, feedback, previous_analysis=None):
         if "improve" in feedback.lower():
             news = self.fetch_news(company, max_articles=15)  # fetch more
-            new_analysis = self.analyze_sentiment(news)
+            new_analysis = self.reanalyze_sentiment(news, previous_summary=previous_analysis or "")
             return new_analysis
         return None
 
@@ -102,31 +123,54 @@ Analysis:
     def run(self, company):
         print(f" Planning steps for: {company}")
         steps = self.plan_steps(company)
+
+        # Check memory first
+        if company in self.memory:
+            print(f"Found previous analysis for {company} in memory. Using it as base.")
+            previous_result = self.memory[company]
+            previous_news = previous_result.get("articles", [])
+            previous_analysis = previous_result.get("refined_analysis", None)
+        else:
+            previous_news = []
+            previous_analysis = None
+
         news = []
-        analysis = None
+        analysis = previous_analysis
+        feedback = None
+        refined = None
 
         for step in steps:
             if step == "fetch_news":
-                print(" Fetching news...")
+                print("→ Fetching news...")
                 news = self.fetch_news(company)
-                print(f"Found articles.")
+                if previous_news:
+                    news = previous_news + news
+                print(f"  Found {len(news)} articles:")
+                for i, article in enumerate(news, 1):
+                    print(f"    Article {i}: {article}\n")
+
             elif step == "analyze_sentiment":
-                print(" Analyzing sentiment...")
-                analysis = self.analyze_sentiment(news)
+                print("→ Analyzing sentiment...")
+                if not analysis:
+                    analysis = self.analyze_sentiment(news)
+                print("  Sentiment analysis complete. Details:\n")
                 print(analysis)
             elif step == "self_reflect":
-                print(" Self-reflection in progress...")
+                print("→ Self-reflection in progress...")
                 feedback = self.self_reflect(company, analysis)
+                print("  Self-reflection complete. Feedback:\n")
                 print(feedback)
-            elif step == "iterate_if_needed":
-                print(" Iterating if needed...")
-                refined = self.iterate(company, feedback)
-                if refined:
-                    print(" Refined analysis:")
-                    print(refined)
-                    analysis = refined
 
-           # Prepare JSON-like output 
+            elif step == "iterate_if_needed":
+                print("→ Iterating if needed...")
+                refined = self.iterate(company, feedback, previous_analysis=analysis)
+                if refined:
+                    analysis = refined
+                    print("  Refined analysis applied:\n")
+                    print(refined)
+
+
+        # Prepare JSON-like output 
         result = {
             "agent": "NewsAgent",
             "company": company,
@@ -150,4 +194,4 @@ if __name__ == "__main__":
         gemini_api_key=os.getenv("G_API_KEY"),
         news_api_key=os.getenv("API_KEY")
     )
-    agent.run("Microsoft")
+    result_json = agent.run("Microsoft")
