@@ -3,7 +3,11 @@ import os
 import json
 from dotenv import load_dotenv
 from crewai import Agent, Task, Crew, Process, LLM
-from News_Agent import NewsAgent  
+
+try:
+    from News_Agent import NewsAgent  
+except ImportError:
+    from researchers.News_Agent import NewsAgent
 
 # Load environment variables
 load_dotenv()

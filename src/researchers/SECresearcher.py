@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 try:
+    # Import sec_tools from the tools package if available
     from tools.sec_tools import (
         calc_debt_to_equity,
         calc_positive_netincome,
@@ -18,6 +19,7 @@ try:
         ticker_to_cik,
     )
 except ImportError:
+    # Fallback import if tools is not a package
     from researchers.tools.sec_tools import (  # type: ignore
         calc_debt_to_equity,
         calc_positive_netincome,
@@ -28,7 +30,7 @@ except ImportError:
         ticker_to_cik,
     )
 
-
+# === Helper functions ===
 def _load_openai_client() -> OpenAI:
     load_dotenv()
     openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -45,11 +47,14 @@ def _safe_parse_json(raw_content: str) -> Any:
 
 from openai import OpenAI
 
+# === SEC Filing Analysis Flow ===
 class SECFilingAnalysis:
+    # Initialize with OpenAI client
     def __init__(self):
         self.client = _load_openai_client()
         self.state = {}
 
+    # === Public API ===
     def run(self, ticker: str):
         if not ticker:
             raise ValueError("No ticker provided. Example: run('AAPL')")
@@ -68,6 +73,7 @@ class SECFilingAnalysis:
 
     # === Individual steps ===
 
+    # Get CIK from ticker
     def _get_cik(self, ticker: str):
         cik = ticker_to_cik(ticker)
         if not cik:
@@ -75,6 +81,7 @@ class SECFilingAnalysis:
         self.state["cik"] = cik
         return cik
 
+    # Get recent facts from CIK
     def _get_facts(self, cik: str):
         facts = get_recent_facts(cik)
         if not facts:
@@ -82,6 +89,7 @@ class SECFilingAnalysis:
         self.state["facts"] = facts
         return facts
 
+    # Calculate financial ratings
     def _calc_financial_ratings(self, facts):
         financial_ratings = {
             "yoy": calc_yoy_rev(facts),
@@ -92,6 +100,7 @@ class SECFilingAnalysis:
         self.state["financial_ratings"] = financial_ratings
         return financial_ratings
 
+    # Get risk/MNA rating
     def _get_risks_mna(self, cik: str):
         risks, mna = fetch_risks_mna(cik)
 
@@ -115,9 +124,10 @@ class SECFilingAnalysis:
         self.state["risk_mna_rating"] = parsed_rating
         return parsed_rating
 
+    # Get final report
     def _get_final_report(self, financial_ratings, risk_mna_rating):
         response = self.client.chat.completions.create(
-            model="gpt-5-mini",
+            model="gpt-5",
             messages=[
                 {"role": "system", "content": "You are a financial analysis expert."},
                 {
@@ -138,12 +148,14 @@ class SECFilingAnalysis:
         final_result = _safe_parse_json(response.choices[0].message.content)
         return final_result
 
+# run SEC Filing Analysis as an Agent
 def run_sec_filing_agent(inputs: dict):
     ticker = inputs.get("ticker")
     analyzer = SECFilingAnalysis()
     result = analyzer.run(ticker)
     return result
 
+# Define the SEC Filing Agent
 sec_filing_agent = Agent(
     role="Flow Runner",
     goal="Run the SEC filing analysis and return raw output",

@@ -1,18 +1,11 @@
 from __future__ import annotations
-
+from openai import OpenAI
+from dotenv import load_dotenv
+import os
 import inspect
 import json
 import logging
 from typing import Any, Callable, Dict, Optional, TypedDict
-
-# LangGraph
-try:
-    from langgraph.graph import StateGraph, END
-    from langgraph.checkpoint.memory import MemorySaver
-except Exception as e:  # pragma: no cover
-    raise ImportError(
-        "langgraph is required. Install with: pip install langgraph"
-    ) from e
 
 # CrewAI tool base
 try:
@@ -23,30 +16,41 @@ except Exception as e:  # pragma: no cover
         "CrewAI and Pydantic are required. Install with: pip install crewai pydantic"
     ) from e
 
-# Import the FRED analysis logic
+# Import FRED tools
 try:
-    from researchers import fred_tools as fred_agent
-except Exception as e:  # pragma: no cover
-    raise ImportError(
-        "Unable to import fred_tools.py. Ensure it is on PYTHONPATH and importable."
-    ) from e
+    from tools import fred_tools as fred_agent
+except ImportError:
+    from researchers.tools import fred_tools as fred_agent
 
+# Setup logging
 log = logging.getLogger(__name__)
 
+# load OpenAI client
+def _load_openai_client() -> OpenAI:
+    load_dotenv()
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        raise RuntimeError("OPENAI_API_KEY environment variable is not set.")
+    return OpenAI(api_key=openai_api_key)
+
+# Define FRED State TypedDict
 class FREDState(TypedDict, total=False):
     query: str
     context: Dict[str, Any]
     result: Any
 
+# Define FREDAgentAdapter
 class FREDAgentAdapter:
     def __init__(self, module=fred_agent):
         self._module = module
         self._entrypoint = getattr(module, "main")
+        self.client = _load_openai_client()
 
     def run(self, query: str, context=None):
         # Treat query as ticker
         return self._entrypoint(query)
 
+# Create CrewAI FRED Agent
 def create_crewai_fred_agent(agent_class):
     """
     Create a CrewAI agent for FRED economic analysis.
@@ -63,6 +67,7 @@ def create_crewai_fred_agent(agent_class):
         async def _arun(self, query: str) -> Dict[str, Any]:
             return self._run(query)
 
+    # Create the agent instance
     return agent_class(
         name="FRED Economic Analyst",
         role="Economic Research Specialist",

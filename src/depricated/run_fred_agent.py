@@ -2,11 +2,14 @@ import logging
 from crewai import Agent, Crew, Task
 from researchers.FREDresearcher import create_crewai_fred_agent
 
+from dotenv import load_dotenv
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 def main():
+    load_dotenv()
     # Create the FRED analysis agent
     fred_agent = create_crewai_fred_agent(Agent)
 

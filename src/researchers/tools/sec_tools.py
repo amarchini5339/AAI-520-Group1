@@ -24,81 +24,80 @@ def ticker_to_cik(ticker: str) -> str:
     return CIK
 
 def get_recent_facts(CIK: str):
+    """
+    Fetches the most recent 10-Q or 10-K filing facts from SEC's companyfacts API.
+    Returns a list of fact entries (concept, unit, value, end_date).
+    """
     # 1. Configuration
-    URL = f'https://data.sec.gov/api/xbrl/companyfacts/CIK{CIK}.json'
-    USER_AGENT = "Your Name (your.email@example.com)" # <-- Required by SEC
+    URL = f"https://data.sec.gov/api/xbrl/companyfacts/CIK{CIK.zfill(10)}.json"
+    USER_AGENT = "Your Name (your.email@example.com)"  # <-- REQUIRED by SEC
 
-    # 2. Fetch the Data
+    # 2. Fetch Data
     try:
-        headers = {'User-Agent': USER_AGENT}
+        headers = {"User-Agent": USER_AGENT}
         response = requests.get(URL, headers=headers)
-        response.raise_for_status() # Check for HTTP errors
+        response.raise_for_status()
         data = response.json()
     except requests.RequestException as e:
-        print(f"Error fetching data: {e}")
-        exit()
+        print(f"[Error] Could not fetch data for CIK {CIK}: {e}")
+        return []
 
-    # 3. Find the Accession Number of the Most Recent 10-Q
+    # 3. Identify the most recent 10-Q or 10-K accession number
     latest_filing_accn = None
     latest_filed_date = datetime.min
-    latest_period_of_report = None
+    latest_form = None
 
-    # The facts are nested under 'facts' -> 'us-gaap' (and sometimes 'ifrs-full')
-    facts = data.get('facts', {}).get('us-gaap', {})
+    facts = data.get("facts", {}).get("us-gaap", {})
 
-    # Iterate through every financial concept (e.g., Assets, Revenues)
     for concept in facts.values():
-        if 'units' in concept:
-            # Iterate through every unit type (e.g., USD, Shares)
-            for unit_facts in concept['units'].values():
-                # Iterate through every reported fact for that unit
-                for fact in unit_facts:
-                    if (fact.get('form') == '10-Q)') or (fact.get('form') == '10-K'):
-                        filed_date_str = fact.get('filed')
-                        
-                        if filed_date_str:
-                            current_date = datetime.strptime(filed_date_str, '%Y-%m-%d')
-                            
-                            # Check if this 10-Q is newer than the one we've found so far
-                            if current_date > latest_filed_date:
-                                latest_filed_date = current_date
-                                latest_filing_accn = fact.get('accn')
-                                latest_period_of_report = fact.get('fp')
+        if "units" not in concept:
+            continue
+        for unit_facts in concept["units"].values():
+            for fact in unit_facts:
+                form = fact.get("form", "")
+                # Skip other forms not 10-Q or 10-K
+                if form not in ("10-Q", "10-K"):
+                    continue
+
+                filed_date_str = fact.get("filed")
+                if not filed_date_str:
+                    continue
+
+                try:
+                    filed_date = datetime.strptime(filed_date_str, "%Y-%m-%d")
+                except ValueError:
+                    continue
+
+                if filed_date > latest_filed_date:
+                    latest_filed_date = filed_date
+                    latest_filing_accn = fact.get("accn")
+                    latest_form = form
 
     if not latest_filing_accn:
-        print("No 10-Q filings found.")
-        exit()
+        print(f"[Warning] No 10-Q or 10-K filings found for CIK {CIK}.")
+        return []
 
-    # 4. Extract all Facts for the Most Recent 10-Q
+    print(f"Most recent filing for CIK {CIK}: Form {latest_form}, Accession {latest_filing_accn}, Filed on {latest_filed_date.date()}")
+
+    # 4. Extract all facts from the most recent filing
     most_recent_facts = []
-
-    # Iterate through the facts structure again
     for concept_name, concept in facts.items():
-        if 'units' in concept:
-            for unit_name, unit_facts in concept['units'].items():
-                for fact in unit_facts:
-                    # Filter by the Accession Number (accn) of the latest 10-Q
-                    if fact.get('accn') == latest_filing_accn:
-                        most_recent_facts.append({
-                            "concept": concept_name,
-                            "unit": unit_name,
-                            "value": fact.get('val'),
-                            "end_date": fact.get('end')
-                        })
-
-    # 5. Output the Results
-    print(f"Extracted the most recent 10-Q data.")
-    print(f"Company: {data.get('entityName')}")
-    print(f"Filing Accession Number (ID): {latest_filing_accn}")
-    print(f"Filing Date: {latest_filed_date.strftime('%Y-%m-%d')}")
-    print(f"Number of Facts Extracted: {len(most_recent_facts)}\n")
-
-    # To save the structured facts to a JSON file:
-    output_file_name = f"AAPL_{latest_filed_date.strftime('%Y%m%d')}_10Q_facts.json"
-    # with open(output_file_name, 'w') as f:
-    #     json.dump(most_recent_facts, f, indent=4)
+        if "units" not in concept:
+            continue
+        for unit_name, unit_facts in concept["units"].items():
+            for fact in unit_facts:
+                if fact.get("accn") == latest_filing_accn:
+                    most_recent_facts.append({
+                        "concept": concept_name,
+                        "unit": unit_name,
+                        "value": fact.get("val"),
+                        "end_date": fact.get("end"),
+                        "form": fact.get("form"),
+                        "accn": fact.get("accn")
+                    })
     return most_recent_facts
 
+# Calculate year-over-year revenue growth
 def calc_yoy_rev(facts):
     # Filter the data for total revenue
     revenue_data = [item for item in facts if item['concept'].lower()[:7] == 'revenue']
@@ -131,6 +130,7 @@ def calc_yoy_rev(facts):
 
     return {'yoy_growth': yoy_growth, 'ratintg': return_val, 'description' : "Year over year revenue growth as a percentage"}
 
+# Calculate profit percent
 def calc_profit(facts):
     revenue_data = [item for item in facts if item['concept'].lower()[:7] == 'revenue']
     curr_end = max([item['end_date'] for item in revenue_data])
@@ -158,6 +158,7 @@ def calc_profit(facts):
     # print(f"{return_val:.2f}")
     return {'net_profit_margin': net_profit_margin, 'rating': return_val, 'description': "Net profit margin as a percentage"}
 
+# Calculate debt to equity ratio
 def calc_debt_to_equity(facts):
     total_debt = 0
 
@@ -198,6 +199,7 @@ def calc_debt_to_equity(facts):
     # print(f"D_E={debt_to_equity} {return_val}")
     return {'debt_to_equity': debt_to_equity, 'rating': return_val, 'description': "Debt to equity ratio"}
 
+# Calculate if net income is positive
 def calc_positive_netincome(facts):
     for item_name in ['NetIncomeLoss']:
         
@@ -263,6 +265,7 @@ def get_latest_10k_text_url(cik: str, user_agent: str):
         "primary_document": primary_doc
     }
 
+# Get risks and MNA from most recent 10-K since these are often not listed in 10-Q
 def get_risks_mna(CIK: str):
     txt_url = get_latest_10k_text_url(cik=CIK, user_agent="Your Name (your.email@example.com)")["txt_url"]
     headers = {"User-Agent": "Your Name (your.email@example.com)"}
@@ -371,6 +374,7 @@ def prompt(risk_text: str, mda_text: str):
 
 # This function was used in development but is not currently called in the flow, left for debugging
 def final_rating(risk_rating, yoy_rating, profit_rating, debt_equity_rating, net_income_rating):
+    # Set weights for calculation
     weights = {
         'risk': 0.3,
         'yoy': 0.2,
@@ -379,6 +383,7 @@ def final_rating(risk_rating, yoy_rating, profit_rating, debt_equity_rating, net
         'net_income': 0.15
     }
     
+    # Calculate final score with weights
     final_score = (
         risk_rating * weights['risk'] +
         yoy_rating * weights['yoy'] +
@@ -387,6 +392,7 @@ def final_rating(risk_rating, yoy_rating, profit_rating, debt_equity_rating, net
         net_income_rating * weights['net_income']
     )
     
+    # Determine recommendation based on final score
     if final_score >= 4:
         recommendation = 'strong buy'
     elif final_score >= 3.5:
