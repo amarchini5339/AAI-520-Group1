@@ -4,15 +4,24 @@ This project implements an autonomous AI system that performs comprehensive fina
 
 ### Core Components
 
-**RouterMain.py** - Main orchestration engine that coordinates all research agents
-**yahoo_find_ticker.py** - Company identification and ticker resolution service
-**SECresearcher.py** - SEC regulatory filings analysis agent
-**sec_tools.py** - SEC EDGAR API integration and financial calculation tools
-**YahooFinanceCrew.py** - Market data and technical analysis agent
-**FREDresearcher.py** - Economic data analysis agent wrapper
-**fred_tools.py** - FRED API integration and macroeconomic analysis
-**News_Agent_Crew.py** - News sentiment analysis crew wrapper
-**News_Agent.py** -  News research agent with self-reflection
+**RouterMain.py** - Main orchestration engine that coordinates all research agents  
+
+**yahoo_find_ticker.py** - Company identification and ticker resolution service  
+
+**SECresearcher.py** - SEC regulatory filings analysis agent  
+
+**sec_tools.py** - SEC EDGAR API integration and financial calculation tools  
+
+**YahooFinanceCrew.py** - Market data and technical analysis agent  
+
+**FREDresearcher.py** - Economic data analysis agent wrapper  
+
+**fred_tools.py** - FRED API integration and macroeconomic analysis  
+
+**News_Agent_Crew.py** - News sentiment analysis crew wrapper  
+
+**News_Agent.py** -  News research agent with self-reflection  
+
 
 ## 🔄 Workflow Process
 
